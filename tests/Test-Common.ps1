@@ -266,3 +266,8 @@ if ($failures.Count -gt 0) {
 }
 
 Write-Host "All $testCount tests passed." -ForegroundColor Green
+
+# GitHub Actions propagates the last native-process exit code after a
+# PowerShell step. The suite intentionally tests an allowed exit code of 7, so
+# clear that stale value only after every assertion has passed.
+$global:LASTEXITCODE = 0

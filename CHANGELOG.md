@@ -29,5 +29,7 @@ project uses semantic versioning after the initial public preview.
 
 - Run Windows PowerShell 5.1 and PowerShell 7 checks as explicit GitHub Actions
   jobs so the workflow does not depend on a dynamic `shell` expression.
+- Clear the expected native-command failure code after successful offline tests
+  so GitHub Actions reports the passing suite correctly.
 
 [Unreleased]: https://github.com/slovak-edhouse/github-course-sync/commits/main
