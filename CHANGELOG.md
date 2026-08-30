@@ -31,5 +31,6 @@ project uses semantic versioning after the initial public preview.
   jobs so the workflow does not depend on a dynamic `shell` expression.
 - Clear the expected native-command failure code after successful offline tests
   so GitHub Actions reports the passing suite correctly.
+- Update `actions/checkout` to the Node.js 24-based `v7` release.
 
 [Unreleased]: https://github.com/slovak-edhouse/github-course-sync/commits/main
