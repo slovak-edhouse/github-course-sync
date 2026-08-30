@@ -9,21 +9,28 @@ permissions:
   contents: read
 
 jobs:
-  powershell:
-    name: ${{ matrix.shell }}
+  windows-powershell:
+    name: Windows PowerShell 5.1
     runs-on: windows-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        shell:
-          - powershell
-          - pwsh
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Run offline test suite
-        shell: ${{ matrix.shell }}
+        shell: powershell
+        run: .\tests\Test-Common.ps1
+
+  powershell:
+    name: PowerShell 7
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run offline test suite
+        shell: pwsh
         run: .\tests\Test-Common.ps1

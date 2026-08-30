@@ -25,4 +25,9 @@ project uses semantic versioning after the initial public preview.
   scopes.
 - Made student instructions independent of a specific Git client.
 
+### Fixed
+
+- Run Windows PowerShell 5.1 and PowerShell 7 checks as explicit GitHub Actions
+  jobs so the workflow does not depend on a dynamic `shell` expression.
+
 [Unreleased]: https://github.com/slovak-edhouse/github-course-sync/commits/main
