@@ -1,0 +1,5 @@
+# Real classroom configuration and student data. Commit only the examples.
+classroom.psd1
+students.csv
+_local/
+_local-test/

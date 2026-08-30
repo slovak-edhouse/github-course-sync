@@ -1,0 +1,64 @@
+name: Bug report
+description: Report reproducible incorrect behavior using sanitized data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Never include tokens, authentication output, real student data, `students.csv`, or private repository URLs. Report security vulnerabilities through the Security tab instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit SHA.
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows, PowerShell, Git, and GitHub CLI versions. Sanitize all output.
+      placeholder: |
+        Windows 11
+        PowerShell 7.5
+        git version ...
+        gh version ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Sanitized reproduction
+      description: Use fictional organization, repository, and account names.
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Sanitized output
+      render: shell
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I removed tokens, authentication output, student data, private URLs, and school-internal information.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
