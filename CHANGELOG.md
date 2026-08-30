@@ -5,6 +5,8 @@ project uses semantic versioning after the initial public preview.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-31
+
 ### Added
 
 - Provisioning of private, organization-owned student repositories.
@@ -33,4 +35,5 @@ project uses semantic versioning after the initial public preview.
   so GitHub Actions reports the passing suite correctly.
 - Update `actions/checkout` to the Node.js 24-based `v7` release.
 
-[Unreleased]: https://github.com/slovak-edhouse/github-course-sync/commits/main
+[Unreleased]: https://github.com/slovak-edhouse/github-course-sync/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/slovak-edhouse/github-course-sync/releases/tag/v0.1.0
