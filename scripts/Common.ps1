@@ -301,10 +301,29 @@ function Set-ClassroomRepositorySettings {
         'api', '--method', 'PATCH',
         "repos/$($Configuration.Organization)/$RepositoryName",
         '-f', 'default_branch=main',
-        '-F', 'allow_forking=false',
         '-F', 'delete_branch_on_merge=true',
         '--silent'
     ) | Out-Null
+
+    # GitHub only permits repository-level private-fork settings when private
+    # forking is enabled for the organization. If the organization already
+    # prohibits private forks, PATCH returns HTTP 422 even when setting the
+    # value to false. Treat that case as success after verifying the effective
+    # repository value.
+    $forkingResult = Invoke-NativeCommand -FilePath 'gh' -Arguments @(
+        'api', '--method', 'PATCH',
+        "repos/$($Configuration.Organization)/$RepositoryName",
+        '-F', 'allow_forking=false',
+        '--silent'
+    ) -AllowFailure
+
+    if ($forkingResult.ExitCode -ne 0) {
+        $repository = Get-GitHubRepository -FullName "$($Configuration.Organization)/$RepositoryName"
+        $allowForkingProperty = $repository.PSObject.Properties['allow_forking']
+        if (($null -eq $allowForkingProperty) -or [bool]$allowForkingProperty.Value) {
+            throw "Failed to disable forking for '$($Configuration.Organization)/$RepositoryName'.`n$($forkingResult.Output)"
+        }
+    }
 }
 
 function Set-ClassroomBranchProtection {
