@@ -5,6 +5,11 @@ project uses semantic versioning after the initial public preview.
 
 ## [Unreleased]
 
+### Fixed
+
+- Accept an organization-wide prohibition on private repository forking when
+  GitHub rejects the equivalent repository-level setting with HTTP 422.
+
 ## [0.1.0] - 2026-08-31
 
 ### Added

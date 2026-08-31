@@ -310,7 +310,8 @@ For every CSV row, the script:
 - creates a private organization-owned repository when it is missing;
 - copies the base repository's `main` history into the new repository;
 - grants the teacher team `Admin` and the individual student `Write`;
-- disables forking and protects `main` from force-pushes and deletion.
+- verifies that forking is disabled by either the organization or repository
+  policy, and protects `main` from force-pushes and deletion.
 
 Re-running setup is safe: existing repositories are validated instead of
 recreated. A student who is not already an organization member may need to
