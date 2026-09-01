@@ -55,7 +55,8 @@ When your changes overlap new teacher material, an open synchronization pull
 request remains in your repository. After consulting your teacher, you may
 resolve a simple conflict on GitHub:
 
-1. Open the pull request whose title begins with `Classroom synchronization`.
+1. Open the pull request whose title begins with
+   `GitHub Course Sync: Course materials update`.
 2. Select **Resolve conflicts**.
 3. Decide with your teacher what the correct final file should contain and
    remove all conflict markers.

@@ -6,6 +6,9 @@ param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot '..\classroom.psd1')
 )
 
+$scriptStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+try {
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $configuration = Import-ClassroomConfiguration -Path $ConfigPath
@@ -36,17 +39,23 @@ try {
         '--git-dir', $bareRepository, 'rev-parse', 'refs/heads/main'
     )).Output.Trim()
     $shortCommit = $baseHead.Substring(0, 12)
-    $syncBranch = "classroom-sync/$shortCommit"
-    $pullRequestTitle = "Classroom synchronization $shortCommit"
-    $pullRequestBody = @"
-This pull request synchronizes the complete current classroom base repository.
+    $syncBranch = "github-course-sync/$shortCommit"
+    $pullRequestTitle = "GitHub Course Sync: Course materials update ($shortCommit)"
+    $pullRequestBody = @'
+This pull request was created by [GitHub Course Sync](https://github.com/slovak-edhouse/github-course-sync).
 
-Base repository: $($configuration.BaseRepository)
-Base commit: $baseHead
+It merges the configured base repository's current `main` branch, including its contents and reachable commit history, into this repository's `main`. Existing student commits are preserved. Other branches and tags are not synchronized.
 
-The pull request is managed automatically when there is no conflict.
-If GitHub reports a conflict, the student or teacher may resolve and merge this pull request.
-"@
+**Base repository:** `{0}`
+**Base branch:** `main`
+**Base commit:** {1}
+
+### What happens next
+
+No action is required when GitHub can merge the update automatically.
+
+If the update conflicts with student work, this pull request remains open. The student or teacher must review the conflict, resolve it, and merge the pull request.
+'@ -f $configuration.BaseRepository, $baseHead
     [System.IO.File]::WriteAllText(
         $pullRequestBodyFile,
         $pullRequestBody,
@@ -108,12 +117,12 @@ If GitHub reports a conflict, the student or teacher may resolve and merge this 
                 '--state', 'open', '--json', 'number,headRefName,url', '--limit', '100'
             )).Value)
             $openSyncPullRequests = @($openPullRequests | Where-Object {
-                ([string]$_.headRefName).StartsWith('classroom-sync/', [System.StringComparison]::OrdinalIgnoreCase)
+                ([string]$_.headRefName).StartsWith('github-course-sync/', [System.StringComparison]::OrdinalIgnoreCase)
             })
             $stalePullRequests = @($openSyncPullRequests | Where-Object { [string]$_.headRefName -ne $syncBranch })
             if ($stalePullRequests.Count -gt 0) {
                 $numbers = $stalePullRequests | ForEach-Object { "#$($_.number)" }
-                throw "Older classroom synchronization PR(s) remain open: $($numbers -join ', '). Resolve or close them before distributing a newer base commit."
+                throw "Older GitHub Course Sync PR(s) remain open: $($numbers -join ', '). Resolve or close them before distributing a newer base commit."
             }
 
             $remoteSyncSha = Get-RemoteBranchSha -RepositoryUrl $studentUrl -Branch $syncBranch
@@ -318,4 +327,11 @@ If GitHub reports a conflict, the student or teacher may resolve and merge this 
 }
 finally {
     Remove-ClassroomTemporaryDirectory -Path $temporaryDirectory
+}
+}
+finally {
+    $scriptStopwatch.Stop()
+    $elapsed = $scriptStopwatch.Elapsed
+    $elapsedText = '{0:00}:{1:00}:{2:00}' -f [math]::Floor($elapsed.TotalHours), $elapsed.Minutes, $elapsed.Seconds
+    Write-Host "`nSynchronization finished in $elapsedText."
 }

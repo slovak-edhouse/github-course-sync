@@ -9,6 +9,9 @@ param(
     [string[]]$GitHubUsername = @()
 )
 
+$scriptStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
+try {
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $configuration = Import-ClassroomConfiguration -Path $ConfigPath
@@ -36,6 +39,7 @@ if ($teamCheck.ExitCode -ne 0) {
 $temporaryDirectory = New-ClassroomTemporaryDirectory
 $bareRepository = Join-Path $temporaryDirectory 'base.git'
 $baseUrl = "https://github.com/$($configuration.BaseRepository).git"
+$studentWorkflowUrl = 'https://github.com/slovak-edhouse/github-course-sync/blob/main/docs/STUDENT_WORKFLOW.en.md'
 $failures = @()
 
 try {
@@ -60,6 +64,7 @@ try {
         $repositoryName = $student.RepositoryName
         $fullRepositoryName = "$($configuration.Organization)/$repositoryName"
         $studentUrl = "https://github.com/$fullRepositoryName.git"
+        $repositoryDescription = "Course repository for $studentName (@$username), managed with GitHub Course Sync."
         Write-Host "`n[$studentName | @$username] $fullRepositoryName"
 
         try {
@@ -88,7 +93,8 @@ try {
                         'api', '--method', 'POST',
                         "orgs/$($configuration.Organization)/repos",
                         '-f', "name=$repositoryName",
-                        '-f', "description=Private classroom repository for $studentName (@$username)",
+                        '-f', "description=$repositoryDescription",
+                        '-f', "homepage=$studentWorkflowUrl",
                         '-F', 'private=true',
                         '-F', 'has_issues=true',
                         '-F', 'has_projects=false',
@@ -117,7 +123,7 @@ try {
 
             $studentHead = Get-RemoteBranchSha -RepositoryUrl $studentUrl -Branch 'main'
             if ($null -eq $studentHead) {
-                if ($PSCmdlet.ShouldProcess($fullRepositoryName, 'Seed main with complete base repository history')) {
+                if ($PSCmdlet.ShouldProcess($fullRepositoryName, 'Seed main with base main-branch history')) {
                     Invoke-NativeCommand -FilePath 'git' -Arguments @(
                         '--git-dir', $bareRepository, 'push', $studentUrl,
                         'refs/heads/main:refs/heads/main'
@@ -137,8 +143,9 @@ try {
                 Write-Host "  Existing main left unchanged at $studentHead."
             }
 
-            if ($PSCmdlet.ShouldProcess($fullRepositoryName, 'Apply secure settings and permissions')) {
-                Set-ClassroomRepositorySettings -Configuration $configuration -RepositoryName $repositoryName
+            if ($PSCmdlet.ShouldProcess($fullRepositoryName, 'Apply secure settings, metadata, and permissions')) {
+                Set-ClassroomRepositorySettings -Configuration $configuration -RepositoryName $repositoryName `
+                    -Description $repositoryDescription -Homepage $studentWorkflowUrl
                 Grant-TeacherTeamAccess -Configuration $configuration -RepositoryName $repositoryName
                 Grant-StudentWriteAccess -Configuration $configuration -RepositoryName $repositoryName -GitHubUsername $username
                 Set-ClassroomBranchProtection -Configuration $configuration -RepositoryName $repositoryName
@@ -183,4 +190,11 @@ try {
 }
 finally {
     Remove-ClassroomTemporaryDirectory -Path $temporaryDirectory
+}
+}
+finally {
+    $scriptStopwatch.Stop()
+    $elapsed = $scriptStopwatch.Elapsed
+    $elapsedText = '{0:00}:{1:00}:{2:00}' -f [math]::Floor($elapsed.TotalHours), $elapsed.Minutes, $elapsed.Seconds
+    Write-Host "`nSetup finished in $elapsedText."
 }

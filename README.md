@@ -11,9 +11,10 @@ Two commands manage a repository set:
 
 1. `Setup-Classroom.ps1` creates and secures one private repository per student
    for the configured scope.
-2. `Sync-Classroom.ps1` distributes the complete current contents and Git
-   history of a private base repository to every corresponding student
-   repository.
+2. `Sync-Classroom.ps1` distributes the complete current contents and reachable
+   commit history of the private base repository's `main` branch to every
+   corresponding student repository. Other branches and tags are not
+   synchronized.
 
 Students use ordinary **Pull**, **Commit**, and **Push**. They do not create
 forks, configure an `upstream` remote, or open pull requests for normal class
@@ -28,6 +29,15 @@ do not depend on the student's local client.
 > This is an independent community project. It is not affiliated with or
 > supported by GitHub, Microsoft, or the author's school. Test it with a dummy
 > repository and test account before using it with real students.
+
+## Quick start
+
+Clone this repository, copy `classroom.example.psd1` to `classroom.psd1` and
+`students.example.csv` to `students.csv`, replace the example values with dummy
+test resources, and preview provisioning with
+`.\scripts\Setup-Classroom.ps1 -WhatIf`. Before making changes on GitHub, follow
+the complete [organization-security and configuration instructions](#1-secure-the-github-organization)
+and run the [manual acceptance test](docs/ACCEPTANCE_TEST.md).
 
 ## Repository model
 
@@ -56,8 +66,8 @@ notes, credentials, student data, or private preparation material in it.
 ## Choose a repository scope
 
 The scripts do not prescribe how long a student repository should live. They
-always copy and later synchronize the **complete base repository**, so the
-contents of that base define the scope.
+always copy and later synchronize the complete contents and reachable history
+of the base repository's `main` branch, so that branch defines the scope.
 
 | Model | Example | Advantages | Tradeoffs |
 | --- | --- | --- | --- |
@@ -81,9 +91,11 @@ The base repository and all student repositories share the same initial Git
 history. For each release, the synchronization script:
 
 1. reads the current `main` commit from the base repository;
-2. pushes that exact commit to a `classroom-sync/<commit>` branch in each
+2. pushes that exact commit to a `github-course-sync/<commit>` branch in each
    student repository;
-3. creates an internal pull request from that branch to the student's `main`;
+3. creates an internal pull request titled
+   `GitHub Course Sync: Course materials update (<commit>)` from that branch to
+   the student's `main`;
 4. merges the pull request when GitHub reports no conflict.
 
 This is a Git merge, not a file mirror or destructive overwrite. Student
@@ -121,7 +133,7 @@ protection setting.
 - `classroom.example.psd1` - synchronization-scope configuration template
 - `students.example.csv` - student-name and repository-name template
 - `scripts/Setup-Classroom.ps1` - initial provisioning and later additions
-- `scripts/Sync-Classroom.ps1` - complete base-repository distribution
+- `scripts/Sync-Classroom.ps1` - base `main`-branch distribution
 - `scripts/Common.ps1` - shared implementation
 - `docs/STUDENT_WORKFLOW.en.md` - English student instructions
 - `docs/STUDENT_WORKFLOW.cs.md` - Czech student instructions
@@ -308,14 +320,17 @@ For every CSV row, the script:
 - secures the base repository and grants the teacher team `Admin`;
 - verifies that the GitHub account exists;
 - creates a private organization-owned repository when it is missing;
+- identifies it as a GitHub Course Sync repository for the assigned student and
+  links its **Website** field to the English student workflow;
 - copies the base repository's `main` history into the new repository;
 - grants the teacher team `Admin` and the individual student `Write`;
 - verifies that forking is disabled by either the organization or repository
   policy, and protects `main` from force-pushes and deletion.
 
 Re-running setup is safe: existing repositories are validated instead of
-recreated. A student who is not already an organization member may need to
-accept an invitation before cloning the repository.
+recreated, and their managed description and student-workflow link are updated.
+A student who is not already an organization member may need to accept an
+invitation before cloning the repository.
 
 To add selected students later, add their CSV rows and run:
 
@@ -334,9 +349,10 @@ Commit and push the complete student-safe state to the base repository's
 ```
 
 There is no assignment path, assignment ID, release title, or state file. The
-unit of distribution is always the entire configured base repository, and the
-base commit SHA is the release identity. A long-lived base may therefore
-contain many assignments, while an assignment-scoped base may contain only one.
+unit of distribution is always the configured base repository's complete
+`main` branch, and the base commit SHA is the release identity. A long-lived
+base may therefore contain many assignments, while an assignment-scoped base
+may contain only one.
 
 The final summary distinguishes synchronized, already current, needs
 attention, and failed repositories. A merge conflict is displayed in yellow
@@ -356,6 +372,9 @@ Give students the appropriate guide:
 
 - [English student workflow](docs/STUDENT_WORKFLOW.en.md)
 - [Czech student workflow](docs/STUDENT_WORKFLOW.cs.md)
+
+Setup places the public English guide in each student repository's **Website**
+field. Teachers can additionally share the Czech guide directly when needed.
 
 The guides intentionally describe Git operations rather than product-specific
 buttons. A teacher may demonstrate those operations in the Git client used at

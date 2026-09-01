@@ -294,16 +294,30 @@ function Set-ClassroomRepositorySettings {
         [pscustomobject]$Configuration,
 
         [Parameter(Mandatory = $true)]
-        [string]$RepositoryName
+        [string]$RepositoryName,
+
+        [Parameter()]
+        [string]$Description = '',
+
+        [Parameter()]
+        [string]$Homepage = ''
     )
 
-    Invoke-NativeCommand -FilePath 'gh' -Arguments @(
+    $settingsArguments = @(
         'api', '--method', 'PATCH',
         "repos/$($Configuration.Organization)/$RepositoryName",
         '-f', 'default_branch=main',
-        '-F', 'delete_branch_on_merge=true',
-        '--silent'
-    ) | Out-Null
+        '-F', 'delete_branch_on_merge=true'
+    )
+    if (-not [string]::IsNullOrWhiteSpace($Description)) {
+        $settingsArguments += @('-f', "description=$Description")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Homepage)) {
+        $settingsArguments += @('-f', "homepage=$Homepage")
+    }
+    $settingsArguments += '--silent'
+
+    Invoke-NativeCommand -FilePath 'gh' -Arguments $settingsArguments | Out-Null
 
     # GitHub only permits repository-level private-fork settings when private
     # forking is enabled for the organization. If the organization already
