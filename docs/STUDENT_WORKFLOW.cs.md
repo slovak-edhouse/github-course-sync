@@ -57,7 +57,8 @@ Když se vaše změny střetnou s novými materiály od učitele, zůstane v
 repozitáři otevřený synchronizační pull request. Jednoduchý konflikt můžete po
 domluvě s učitelem vyřešit přímo na GitHubu:
 
-1. Otevřete pull request, jehož název začíná `Classroom synchronization`.
+1. Otevřete pull request, jehož název začíná
+   `GitHub Course Sync: Course materials update`.
 2. Použijte `Resolve conflicts`.
 3. S učitelem rozhodněte, která výsledná podoba souboru je správná, a odstraňte
    značky konfliktu.

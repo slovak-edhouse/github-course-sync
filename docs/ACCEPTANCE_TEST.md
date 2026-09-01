@@ -12,6 +12,7 @@ The examples below use:
 Organization:      school-org
 Base repository:   course-sync-test-base
 Student repository course-sync-test-student
+Student name:       Test Student
 Test account:      test-student
 Teacher team:      programming-teachers
 ```
@@ -73,6 +74,22 @@ gh api repos/school-org/course-sync-test-student `
 ```
 
 Expected values are `private` and `false`.
+
+Check the student-repository description and **Website** link:
+
+```powershell
+gh api repos/school-org/course-sync-test-student `
+    --jq '{description: .description, homepage: .homepage}'
+```
+
+Expected result:
+
+```text
+{
+  "description": "Course repository for Test Student (@test-student), managed with GitHub Course Sync.",
+  "homepage": "https://github.com/slovak-edhouse/github-course-sync/blob/main/docs/STUDENT_WORKFLOW.en.md"
+}
+```
 
 Check the student's permission:
 
@@ -144,8 +161,10 @@ and run synchronization:
 
 Expected results:
 
-- a `classroom-sync/<commit>` branch is pushed;
-- an internal pull request is created and merged;
+- a `github-course-sync/<commit>` branch is pushed;
+- an internal pull request titled
+  `GitHub Course Sync: Course materials update (<commit>)` is created and
+  merged;
 - the student's earlier commit remains in history;
 - the new base directory appears on student `main`.
 

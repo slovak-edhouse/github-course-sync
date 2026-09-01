@@ -5,10 +5,29 @@ project uses semantic versioning after the initial public preview.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-01
+
+### Changed
+
+- Identify student repositories with a GitHub Course Sync description and link
+  their **Website** field to the public English student workflow.
+- Brand synchronization pull requests as course-material updates, rename their
+  branches to `github-course-sync/<commit>`, and describe their `main`-branch
+  scope precisely.
+
+### Documentation
+
+- Add a concise safe-trial quick start to the README.
+- Align the README, English and Czech student guides, and manual acceptance test
+  with the new repository metadata, synchronization title, branch prefix, and
+  `main`-branch scope.
+
 ### Fixed
 
 - Accept an organization-wide prohibition on private repository forking when
   GitHub rejects the equivalent repository-level setting with HTTP 422.
+- Avoid duplicate GitHub Actions runs for pull-request branches by limiting the
+  push trigger to `main`.
 
 ## [0.1.0] - 2026-08-31
 
@@ -40,5 +59,6 @@ project uses semantic versioning after the initial public preview.
   so GitHub Actions reports the passing suite correctly.
 - Update `actions/checkout` to the Node.js 24-based `v7` release.
 
-[Unreleased]: https://github.com/slovak-edhouse/github-course-sync/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/slovak-edhouse/github-course-sync/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/slovak-edhouse/github-course-sync/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/slovak-edhouse/github-course-sync/releases/tag/v0.1.0
