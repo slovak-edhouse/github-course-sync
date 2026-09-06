@@ -297,6 +297,12 @@ it is not generated from the student name. Use only lowercase letters, digits,
 `.`, `_`, and `-`. GitHub usernames and repository suffixes must each be
 unique within a configuration.
 
+Use one student per line; quoted commas and escaped quotes (`""`) are supported,
+but embedded newlines are not. Blank lines are ignored. Setup and synchronization
+skip incomplete, invalid, malformed, or conflicting duplicate rows, warn with
+line numbers and reasons, and report the skipped count. You can leave usernames
+empty while preparing the roster.
+
 ## 6. Create student repositories
 
 First preview the operation:

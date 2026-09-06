@@ -136,96 +136,170 @@ function Import-ClassroomConfiguration {
     }
 }
 
+# Parse one physical line so a broken quote cannot consume subsequent students.
+function ConvertFrom-ClassroomCsvLine {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Line)
+
+    $fields = New-Object 'System.Collections.Generic.List[string]'
+    $field = New-Object System.Text.StringBuilder
+    $state = 'Start'
+    for ($index = 0; $index -lt $Line.Length; $index++) {
+        $character = $Line[$index]
+        if ($state -eq 'Quoted') {
+            if ($character -eq '"') {
+                if (($index + 1 -lt $Line.Length) -and ($Line[$index + 1] -eq '"')) {
+                    [void]$field.Append('"')
+                    $index++
+                }
+                else { $state = 'Closed' }
+            }
+            else { [void]$field.Append($character) }
+        }
+        elseif ($character -eq ',') {
+            $fields.Add($field.ToString())
+            [void]$field.Clear()
+            $state = 'Start'
+        }
+        elseif (($character -eq '"') -and ($state -eq 'Start')) {
+            $state = 'Quoted'
+        }
+        elseif (($character -eq '"') -or ($state -eq 'Closed')) {
+            throw 'Malformed CSV quotation marks.'
+        }
+        else {
+            [void]$field.Append($character)
+            $state = 'Unquoted'
+        }
+    }
+    if ($state -eq 'Quoted') { throw 'Unclosed CSV quotation mark; each student must occupy one physical line.' }
+    $fields.Add($field.ToString())
+    if ($fields.Count -ne 3) { throw "Expected exactly 3 CSV fields, found $($fields.Count)." }
+    return [pscustomobject]@{
+        StudentName = $fields[0]
+        GitHubUsername = $fields[1]
+        RepositorySuffix = $fields[2]
+    }
+}
+
 function Get-ClassroomStudents {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
-        [pscustomobject]$Configuration,
-
-        [Parameter()]
-        [string[]]$GitHubUsername = @()
+        [Parameter(Mandatory = $true)][pscustomobject]$Configuration,
+        [Parameter()][string[]]$GitHubUsername = @(),
+        # Optional structured report; preserve the existing student-array output.
+        [Parameter()][ref]$Report
     )
 
     if (-not (Test-Path -LiteralPath $Configuration.StudentsPath -PathType Leaf)) {
         throw "Student configuration was not found: $($Configuration.StudentsPath)"
     }
-
+    $lines = @(Get-Content -LiteralPath $Configuration.StudentsPath -Encoding UTF8)
     $expectedHeader = 'StudentName,GitHubUsername,RepositorySuffix'
-    $actualHeader = Get-Content -LiteralPath $Configuration.StudentsPath -Encoding UTF8 -TotalCount 1
-    if ([string]$actualHeader -cne $expectedHeader) {
+    if (($lines.Count -eq 0) -or ([string]$lines[0] -cne $expectedHeader)) {
         throw "The first line of students.csv must be exactly: $expectedHeader"
     }
 
-    $csvRows = @(Import-Csv -LiteralPath $Configuration.StudentsPath -Encoding UTF8)
-    if ($csvRows.Count -eq 0) {
-        throw "Student configuration is empty: $($Configuration.StudentsPath)"
+    $candidates = @()
+    $skipped = @()
+    $knownUsernames = @()
+    $readableRows = @()
+    for ($lineIndex = 1; $lineIndex -lt $lines.Count; $lineIndex++) {
+        if ([string]::IsNullOrWhiteSpace($lines[$lineIndex])) { continue }
+        $studentName = ''
+        $username = ''
+        try {
+            $row = ConvertFrom-ClassroomCsvLine -Line $lines[$lineIndex]
+            $studentName = $row.StudentName
+            $username = $row.GitHubUsername
+            $repositorySuffix = $row.RepositorySuffix
+            $readableRows += $row
+            if (-not [string]::IsNullOrWhiteSpace($username)) {
+                $knownUsernames += $username.Trim().ToLowerInvariant()
+            }
+            if ([string]::IsNullOrWhiteSpace($studentName)) {
+                throw 'StudentName is required for every row in students.csv.'
+            }
+            if ([string]::IsNullOrWhiteSpace($username)) {
+                throw "GitHubUsername is required for student '$($studentName.Trim())'."
+            }
+            if ([string]::IsNullOrWhiteSpace($repositorySuffix)) {
+                throw "RepositorySuffix is required for student '$($studentName.Trim())'."
+            }
+            if (($studentName -cne $studentName.Trim()) -or
+                ($username -cne $username.Trim()) -or
+                ($repositorySuffix -cne $repositorySuffix.Trim())) {
+                throw "Leading or trailing whitespace is not allowed in students.csv (student '$($studentName.Trim())')."
+            }
+            if (($username.Length -gt 39) -or ($username -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$')) {
+                throw "Invalid GitHub username format for '$studentName': '$username'."
+            }
+            if ($repositorySuffix -cnotmatch '^[a-z0-9._-]+$') {
+                throw "RepositorySuffix for '$studentName' must use only lowercase letters, digits, '.', '_', and '-': '$repositorySuffix'."
+            }
+
+            $repositoryName = "$($Configuration.RepositoryPrefix)$repositorySuffix"
+            if ($repositoryName.Length -gt 100) {
+                throw "Generated repository name for '$studentName' is longer than 100 characters: '$repositoryName'."
+            }
+            if ($repositoryName.Equals($Configuration.BaseRepositoryName, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Generated repository name for '$studentName' collides with the base repository: '$repositoryName'."
+            }
+            $candidates += [pscustomobject]@{
+                LineNumber = $lineIndex + 1
+                StudentName = $studentName
+                GitHubUsername = $username.ToLowerInvariant()
+                RepositorySuffix = $repositorySuffix
+                RepositoryName = $repositoryName
+            }
+        }
+        catch {
+            $skipped += [pscustomobject]@{
+                LineNumber = $lineIndex + 1
+                StudentName = $studentName
+                GitHubUsername = $username
+                Reason = $_.Exception.Message
+            }
+        }
     }
 
+    # Exclude every member of each conflicting group, never choose by row order.
+    $duplicateUsernames = @($readableRows | Where-Object { -not [string]::IsNullOrWhiteSpace($_.GitHubUsername) } | Group-Object { $_.GitHubUsername.Trim().ToLowerInvariant() } | Where-Object Count -gt 1 | ForEach-Object Name)
+    $duplicateSuffixes = @($readableRows | Where-Object { -not [string]::IsNullOrWhiteSpace($_.RepositorySuffix) } | Group-Object { $_.RepositorySuffix.Trim().ToLowerInvariant() } | Where-Object Count -gt 1 | ForEach-Object Name)
     $students = @()
-    foreach ($row in $csvRows) {
-        $studentName = [string]$row.StudentName
-        $username = [string]$row.GitHubUsername
-        $repositorySuffix = [string]$row.RepositorySuffix
-
-        if ([string]::IsNullOrWhiteSpace($studentName)) {
-            throw 'StudentName is required for every row in students.csv.'
+    foreach ($candidate in $candidates) {
+        $reasons = @()
+        if ($duplicateUsernames -contains $candidate.GitHubUsername) { $reasons += 'Duplicate GitHubUsername.' }
+        if ($duplicateSuffixes -contains $candidate.RepositorySuffix) { $reasons += 'Duplicate RepositorySuffix.' }
+        if ($reasons.Count -gt 0) {
+            $skipped += [pscustomobject]@{
+                LineNumber = $candidate.LineNumber
+                StudentName = $candidate.StudentName
+                GitHubUsername = $candidate.GitHubUsername
+                Reason = $reasons -join ' '
+            }
         }
-        if ([string]::IsNullOrWhiteSpace($username)) {
-            throw "GitHubUsername is required for student '$($studentName.Trim())'."
-        }
-        if ([string]::IsNullOrWhiteSpace($repositorySuffix)) {
-            throw "RepositorySuffix is required for student '$($studentName.Trim())'."
-        }
-        if (($studentName -cne $studentName.Trim()) -or
-            ($username -cne $username.Trim()) -or
-            ($repositorySuffix -cne $repositorySuffix.Trim())) {
-            throw "Leading or trailing whitespace is not allowed in students.csv (student '$($studentName.Trim())')."
-        }
-        if (($username.Length -gt 39) -or ($username -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$')) {
-            throw "Invalid GitHub username format for '$studentName': '$username'."
-        }
-        if ($repositorySuffix -cnotmatch '^[a-z0-9._-]+$') {
-            throw "RepositorySuffix for '$studentName' must use only lowercase letters, digits, '.', '_', and '-': '$repositorySuffix'."
-        }
-
-        $repositoryName = "$($Configuration.RepositoryPrefix)$repositorySuffix"
-        if ($repositoryName.Length -gt 100) {
-            throw "Generated repository name for '$studentName' is longer than 100 characters: '$repositoryName'."
-        }
-        if ($repositoryName.Equals($Configuration.BaseRepositoryName, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Generated repository name for '$studentName' collides with the base repository: '$repositoryName'."
-        }
-
-        $students += [pscustomobject]@{
-            StudentName      = $studentName
-            GitHubUsername   = $username.ToLowerInvariant()
-            RepositorySuffix = $repositorySuffix
-            RepositoryName   = $repositoryName
+        else {
+            $students += $candidate | Select-Object StudentName, GitHubUsername, RepositorySuffix, RepositoryName
         }
     }
 
-    $duplicateUsernames = @($students | Group-Object { $_.GitHubUsername.ToLowerInvariant() } | Where-Object Count -gt 1)
-    if ($duplicateUsernames.Count -gt 0) {
-        throw "students.csv contains duplicate GitHubUsername values: $($duplicateUsernames.Name -join ', ')"
+    $skipped = @($skipped | Sort-Object LineNumber)
+    foreach ($entry in $skipped) {
+        $identity = if ([string]::IsNullOrWhiteSpace($entry.StudentName)) { 'row' } else { "student '$($entry.StudentName)'" }
+        Write-Warning "$($Configuration.StudentsPath):$($entry.LineNumber): Skipping $identity`: $($entry.Reason)"
     }
-    $duplicateSuffixes = @($students | Group-Object { $_.RepositorySuffix.ToLowerInvariant() } | Where-Object Count -gt 1)
-    if ($duplicateSuffixes.Count -gt 0) {
-        throw "students.csv contains duplicate RepositorySuffix values: $($duplicateSuffixes.Name -join ', ')"
+    if ($null -ne $Report) {
+        $Report.Value = [pscustomobject]@{ Skipped = $skipped; EligibleCount = $students.Count }
     }
-    $duplicateRepositoryNames = @($students | Group-Object { $_.RepositoryName.ToLowerInvariant() } | Where-Object Count -gt 1)
-    if ($duplicateRepositoryNames.Count -gt 0) {
-        throw "students.csv generates duplicate repository names: $($duplicateRepositoryNames.Name -join ', ')"
-    }
-
     if ($GitHubUsername.Count -gt 0) {
         $requestedUsernames = @($GitHubUsername | ForEach-Object { $_.Trim().ToLowerInvariant() })
-        $unknownUsernames = @($requestedUsernames | Where-Object { @($students.GitHubUsername) -notcontains $_ })
+        $unknownUsernames = @($requestedUsernames | Where-Object { $knownUsernames -notcontains $_ })
         if ($unknownUsernames.Count -gt 0) {
-            throw "Requested GitHub username(s) are not present in students.csv: $($unknownUsernames -join ', ')"
+            throw "Requested GitHub username(s) are not present in readable rows of students.csv: $($unknownUsernames -join ', ')"
         }
         return @($students | Where-Object { $requestedUsernames -contains $_.GitHubUsername })
     }
-
     return $students
 }
 

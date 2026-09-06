@@ -5,6 +5,12 @@ project uses semantic versioning after the initial public preview.
 
 ## [Unreleased]
 
+### Fixed
+
+- Skip invalid or malformed student CSV rows with warnings instead of aborting
+  setup and synchronization; skip all conflicting duplicates and report skipped
+  counts ([#4](https://github.com/slovak-edhouse/github-course-sync/issues/4)).
+
 ## [0.1.1] - 2026-09-01
 
 ### Changed
