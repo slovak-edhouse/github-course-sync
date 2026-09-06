@@ -12,7 +12,14 @@ try {
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $configuration = Import-ClassroomConfiguration -Path $ConfigPath
-$students = @(Get-ClassroomStudents -Configuration $configuration)
+$rosterReport = $null
+$students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$rosterReport))
+$skippedCount = @($rosterReport.Skipped).Count
+Write-Host "Roster: $($students.Count) selected eligible student(s), $skippedCount skipped row(s)."
+if ($students.Count -eq 0) {
+    Write-Host 'No eligible students selected; nothing to do.'
+    return
+}
 Assert-ClassroomTooling
 
 $baseRepository = Get-GitHubRepository -FullName $configuration.BaseRepository
@@ -314,6 +321,7 @@ If the update conflicts with student work, this pull request remains open. The s
     Write-Host "  Already current:  $alreadyCurrentCount"
     Write-Host "  Needs attention:  $attentionCount"
     Write-Host "  Failed:           $failureCount"
+    Write-Host "  Skipped rows:     $skippedCount"
 
     if ($attentionCount -gt 0) {
         Write-Warning "$attentionCount synchronization pull request(s) require conflict resolution. Resolve and merge them before releasing a newer base commit."

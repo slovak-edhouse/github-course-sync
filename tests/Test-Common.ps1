@@ -192,7 +192,7 @@ example-user,"Jan Novák",novak-jan
         Assert-ThrowsLike -Action { Get-ClassroomStudents -Configuration $configuration } -Pattern '*first line of students.csv must be exactly*'
     }
 
-    Invoke-Test 'Duplicate usernames are rejected case-insensitively' {
+    Invoke-Test 'All duplicate usernames are skipped case-insensitively' {
         $studentsText = @"
 StudentName,GitHubUsername,RepositorySuffix
 "Student One",Example-User,student-one
@@ -200,10 +200,13 @@ StudentName,GitHubUsername,RepositorySuffix
 "@
         $path = New-TestFixture -Root $temporaryRoot -Name 'duplicate-user' -Students $studentsText
         $configuration = Import-ClassroomConfiguration -Path $path
-        Assert-ThrowsLike -Action { Get-ClassroomStudents -Configuration $configuration } -Pattern '*duplicate GitHubUsername*'
+        $report = $null
+        $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report) -WarningAction SilentlyContinue)
+        Assert-Equal 0 $students.Count 'Duplicate students must not be selected.'
+        Assert-Equal 2 $report.Skipped.Count 'Both conflicting students must be skipped.'
     }
 
-    Invoke-Test 'Duplicate repository suffixes are rejected' {
+    Invoke-Test 'All duplicate repository suffixes are skipped' {
         $studentsText = @"
 StudentName,GitHubUsername,RepositorySuffix
 "Student One",student-one,same-suffix
@@ -211,29 +214,169 @@ StudentName,GitHubUsername,RepositorySuffix
 "@
         $path = New-TestFixture -Root $temporaryRoot -Name 'duplicate-suffix' -Students $studentsText
         $configuration = Import-ClassroomConfiguration -Path $path
-        Assert-ThrowsLike -Action { Get-ClassroomStudents -Configuration $configuration } -Pattern '*duplicate RepositorySuffix*'
+        $report = $null
+        $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report) -WarningAction SilentlyContinue)
+        Assert-Equal 0 $students.Count 'Conflicting repositories must not be selected.'
+        Assert-Equal 2 $report.Skipped.Count 'Both conflicting mappings must be skipped.'
     }
 
-    Invoke-Test 'Uppercase repository suffixes are rejected' {
+    Invoke-Test 'Uppercase repository suffixes are skipped' {
         $studentsText = @"
 StudentName,GitHubUsername,RepositorySuffix
 "Student One",student-one,Student-One
 "@
         $path = New-TestFixture -Root $temporaryRoot -Name 'uppercase-suffix' -Students $studentsText
         $configuration = Import-ClassroomConfiguration -Path $path
-        Assert-ThrowsLike -Action { Get-ClassroomStudents -Configuration $configuration } -Pattern '*must use only lowercase letters*'
+        $report = $null
+        $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report) -WarningAction SilentlyContinue)
+        Assert-Equal 0 $students.Count 'Invalid row must not be selected.'
+        Assert-Equal 1 $report.Skipped.Count 'Invalid row must be reported.'
+        Assert-True ($report.Skipped[0].Reason -like '*must use only lowercase letters*') 'Wrong skip reason.'
     }
 
-    Invoke-Test 'A repository name collision with the base is rejected' {
+    Invoke-Test 'A repository name collision with the base is skipped' {
         $studentsText = @"
 StudentName,GitHubUsername,RepositorySuffix
 "Student One",student-one,base
 "@
         $path = New-TestFixture -Root $temporaryRoot -Name 'base-collision' -Students $studentsText
         $configuration = Import-ClassroomConfiguration -Path $path
-        Assert-ThrowsLike -Action { Get-ClassroomStudents -Configuration $configuration } -Pattern '*collides with the base repository*'
+        $report = $null
+        $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report) -WarningAction SilentlyContinue)
+        Assert-Equal 0 $students.Count 'Invalid row must not be selected.'
+        Assert-Equal 1 $report.Skipped.Count 'Invalid row must be reported.'
+        Assert-True ($report.Skipped[0].Reason -like '*collides with the base repository*') 'Wrong skip reason.'
     }
 
+    Invoke-Test 'Invalid lines never prevent valid surrounding students from loading' {
+        $invalidRows = @(
+            @{ Line = '"Example",,example'; Reason = '*GitHubUsername is required*' },
+            @{ Line = '"Example",   ,example'; Reason = '*GitHubUsername is required*' },
+            @{ Line = '"Example",invalid_user!,example'; Reason = '*Invalid GitHub username*' },
+            @{ Line = ('"Example",' + ('a' * 40) + ',example'); Reason = '*Invalid GitHub username*' },
+            @{ Line = '"Example",-user,example'; Reason = '*Invalid GitHub username*' },
+            @{ Line = '"Example",user-,example'; Reason = '*Invalid GitHub username*' },
+            @{ Line = '"Example", user,example'; Reason = '*whitespace*' },
+            @{ Line = '"Example",user ,example'; Reason = '*whitespace*' },
+            @{ Line = ',user,example'; Reason = '*StudentName is required*' },
+            @{ Line = '"Example",user,'; Reason = '*RepositorySuffix is required*' },
+            @{ Line = '" Example",user,example'; Reason = '*whitespace*' },
+            @{ Line = '"Example",user, example'; Reason = '*whitespace*' },
+            @{ Line = '"Example",user,Example'; Reason = '*lowercase letters*' },
+            @{ Line = '"Example",user,../example'; Reason = '*lowercase letters*' },
+            @{ Line = ('"Example",user,' + ('a' * 100)); Reason = '*longer than 100*' },
+            @{ Line = '"Example",user,base'; Reason = '*collides with the base*' },
+            @{ Line = '"Example",user'; Reason = '*exactly 3 CSV fields*' },
+            @{ Line = '"Example",user,example,extra'; Reason = '*exactly 3 CSV fields*' },
+            @{ Line = '"Example,user,example'; Reason = '*Unclosed CSV*' },
+            @{ Line = '"Example"oops,user,example'; Reason = '*Malformed CSV*' },
+            @{ Line = 'Exam"ple,user,example'; Reason = '*Malformed CSV*' }
+        )
+        $caseNumber = 0
+        foreach ($case in $invalidRows) {
+            $caseNumber++
+            $csv = "StudentName,GitHubUsername,RepositorySuffix`nBefore,before-user,before`n$($case.Line)`nAfter,after-user,after"
+            $path = New-TestFixture -Root $temporaryRoot -Name "invalid-$caseNumber" -Students $csv
+            $configuration = Import-ClassroomConfiguration -Path $path
+            $report = $null
+            $warnings = @()
+            $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report) -WarningAction SilentlyContinue -WarningVariable warnings)
+            Assert-Equal 2 $students.Count "Valid neighbors lost for case $caseNumber."
+            Assert-Equal 'before-user' $students[0].GitHubUsername 'Wrong first student.'
+            Assert-Equal 'after-user' $students[1].GitHubUsername 'Wrong last student.'
+            Assert-Equal 1 $report.Skipped.Count 'Expected one skipped row.'
+            Assert-Equal 3 $report.Skipped[0].LineNumber 'Wrong physical line number.'
+            Assert-True ($report.Skipped[0].Reason -like $case.Reason) "Wrong reason for case $caseNumber."
+            Assert-Equal 1 $warnings.Count 'Expected one warning.'
+            Assert-True ([string]$warnings[0] -like '*students.csv:3: Skipping*') 'Warning must locate the row.'
+        }
+    }
+
+    Invoke-Test 'Quoted commas, escaped quotes, UTF-8 and blank lines are supported' {
+        $csv = "StudentName,GitHubUsername,RepositorySuffix`n`n   `n" + '"Novák, ""Jan""",Example-User,novak-jan'
+        $path = New-TestFixture -Root $temporaryRoot -Name 'quoted' -Students $csv
+        $configuration = Import-ClassroomConfiguration -Path $path
+        $report = $null
+        $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report))
+        Assert-Equal 1 $students.Count 'Expected one student.'
+        Assert-Equal 'Novák, "Jan"' $students[0].StudentName 'Quoted name was corrupted.'
+        Assert-Equal 0 $report.Skipped.Count 'Blank lines are not skipped students.'
+    }
+
+    Invoke-Test 'Overlapping duplicates exclude every conflict and preserve unrelated students' {
+        $csv = @"
+StudentName,GitHubUsername,RepositorySuffix
+One,shared-user,one
+Two,SHARED-USER,two
+Three,third-user,two
+Four,fourth-user,four
+"@
+        $path = New-TestFixture -Root $temporaryRoot -Name 'overlapping' -Students $csv
+        $configuration = Import-ClassroomConfiguration -Path $path
+        $report = $null
+        $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report) -WarningAction SilentlyContinue)
+        Assert-Equal 1 $students.Count 'Only unrelated student should remain.'
+        Assert-Equal 'fourth-user' $students[0].GitHubUsername 'Wrong survivor.'
+        Assert-Equal 3 $report.Skipped.Count 'Every conflict must be excluded.'
+        $filtered = @(Get-ClassroomStudents -Configuration $configuration -GitHubUsername shared-user -WarningAction SilentlyContinue)
+        Assert-Equal 0 $filtered.Count 'Filtering must not bypass duplicates.'
+    }
+
+    Invoke-Test 'An invalid readable row still reserves its conflicting repository mapping' {
+        $csv = "StudentName,GitHubUsername,RepositorySuffix`nIncomplete,,shared`nOther,other-user,shared`nValid,valid-user,valid"
+        $path = New-TestFixture -Root $temporaryRoot -Name 'invalid-conflict' -Students $csv
+        $configuration = Import-ClassroomConfiguration -Path $path
+        $report = $null
+        $students = @(Get-ClassroomStudents -Configuration $configuration -Report ([ref]$report) -WarningAction SilentlyContinue)
+        Assert-Equal 1 $students.Count 'Incomplete row must not release its repository to another student.'
+        Assert-Equal 'valid-user' $students[0].GitHubUsername 'Wrong survivor.'
+        Assert-Equal 2 $report.Skipped.Count 'Both conflicting rows must be skipped.'
+    }
+    Invoke-Test 'Selection distinguishes skipped students from absent usernames' {
+        $csv = "StudentName,GitHubUsername,RepositorySuffix`nSkipped,skipped-user,INVALID`nValid,valid-user,valid"
+        $path = New-TestFixture -Root $temporaryRoot -Name 'skipped-selection' -Students $csv
+        $configuration = Import-ClassroomConfiguration -Path $path
+        $students = @(Get-ClassroomStudents -Configuration $configuration -GitHubUsername SKIPPED-USER,VALID-USER -WarningAction SilentlyContinue)
+        Assert-Equal 1 $students.Count 'Valid selected student must remain.'
+        Assert-Equal 'valid-user' $students[0].GitHubUsername 'Wrong selected student.'
+        Assert-ThrowsLike { Get-ClassroomStudents -Configuration $configuration -GitHubUsername absent-user -WarningAction SilentlyContinue } '*not present in readable rows*'
+    }
+
+    Invoke-Test 'Missing and empty CSV files remain fatal' {
+        $path = New-TestFixture -Root $temporaryRoot -Name 'missing-csv'
+        $configuration = Import-ClassroomConfiguration -Path $path
+        [IO.File]::WriteAllText($configuration.StudentsPath, '')
+        Assert-ThrowsLike { Get-ClassroomStudents -Configuration $configuration } '*first line*'
+        Remove-Item -LiteralPath $configuration.StudentsPath
+        Assert-ThrowsLike { Get-ClassroomStudents -Configuration $configuration } '*not found*'
+    }
+
+    Invoke-Test 'Both scripts stop before tooling or external operations for zero eligible students' {
+        # Copies isolate the scripts from real tools. The first external-operation
+        # gateway throws if reached; normal return proves the early no-op path.
+        $scriptDirectory = Join-Path $temporaryRoot 'isolated-scripts'
+        New-Item -ItemType Directory -Path $scriptDirectory | Out-Null
+        $stubCommon = [IO.File]::ReadAllText($commonScript) + "`nfunction Assert-ClassroomTooling { throw 'Unexpected tooling or external operation.' }"
+        Write-Utf8File -Path (Join-Path $scriptDirectory 'Common.ps1') -Content $stubCommon
+        $rosters = @(
+            'StudentName,GitHubUsername,RepositorySuffix',
+            "StudentName,GitHubUsername,RepositorySuffix`nExample,,example`nBroken,line"
+        )
+        $caseNumber = 0
+        foreach ($roster in $rosters) {
+            $caseNumber++
+            $path = New-TestFixture -Root $temporaryRoot -Name "no-op-$caseNumber" -Students $roster
+            foreach ($scriptName in @('Setup-Classroom.ps1', 'Sync-Classroom.ps1')) {
+                $isolatedScript = Join-Path $scriptDirectory $scriptName
+                Copy-Item -LiteralPath (Join-Path $repositoryRoot "scripts/$scriptName") -Destination $isolatedScript -Force
+                $output = & $isolatedScript -ConfigPath $path -WarningAction SilentlyContinue 6>&1 | Out-String
+                Assert-True ($output -like '*No eligible students selected*') 'Expected a clear no-op message.'
+                Assert-True ($output -like '*skipped row(s)*') 'Expected skipped count.'
+                $dryRunOutput = & $isolatedScript -ConfigPath $path -WhatIf -WarningAction SilentlyContinue 6>&1 | Out-String
+                Assert-True ($dryRunOutput -like '*No eligible students selected*') 'Dry run must also be a no-op.'
+            }
+        }
+    }
     Invoke-Test 'Native stderr does not fail a successful command' {
         $result = Invoke-NativeCommand -FilePath $env:ComSpec -Arguments @(
             '/d', '/s', '/c', 'echo normal progress 1>&2'

@@ -15,7 +15,14 @@ try {
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $configuration = Import-ClassroomConfiguration -Path $ConfigPath
-$students = @(Get-ClassroomStudents -Configuration $configuration -GitHubUsername $GitHubUsername)
+$rosterReport = $null
+$students = @(Get-ClassroomStudents -Configuration $configuration -GitHubUsername $GitHubUsername -Report ([ref]$rosterReport))
+$skippedCount = @($rosterReport.Skipped).Count
+Write-Host "Roster: $($students.Count) selected eligible student(s), $skippedCount skipped row(s)."
+if ($students.Count -eq 0) {
+    Write-Host 'No eligible students selected; nothing to do.'
+    return
+}
 Assert-ClassroomTooling
 
 Write-Host 'Student repository mapping:'
@@ -176,16 +183,16 @@ try {
     }
 
     if ($failures.Count -gt 0) {
-        Write-Host "`nSetup completed with $($failures.Count) failure(s)."
+        Write-Host "`nSetup completed with $($failures.Count) failure(s); $skippedCount roster row(s) skipped."
         $failures | Format-Table StudentName, GitHubUsername, Repository, Error -Wrap
         throw 'Correct the reported problem and run Setup-Classroom.ps1 again.'
     }
 
     if ($WhatIfPreference) {
-        Write-Host "`nSetup dry run completed for $($students.Count) student(s); no GitHub changes were made."
+        Write-Host "`nSetup dry run completed for $($students.Count) student(s); $skippedCount roster row(s) skipped; no GitHub changes were made."
     }
     else {
-        Write-Host "`nSetup completed for $($students.Count) student(s)."
+        Write-Host "`nSetup completed for $($students.Count) student(s); $skippedCount roster row(s) skipped."
     }
 }
 finally {
